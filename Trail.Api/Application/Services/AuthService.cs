@@ -1,8 +1,10 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Trail.Api.Domain.Entities;
 using Trail.Api.DTOs.Auth;
 using Trail.Api.Infrastructure.Data;
 
@@ -10,12 +12,33 @@ namespace Trail.Api.Application.Services;
 
 public class AuthService(AppDbContext db, IConfiguration config)
 {
+    public async Task<LoginResponse?> RegisterAsync(RegisterRequest request)
+    {
+        if (await db.Users.AnyAsync(u => u.Email == request.Email))
+            return null;
+
+        var hasher = new PasswordHasher<object>();
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Name = request.Name,
+            Email = request.Email,
+            PasswordHash = hasher.HashPassword(null!, request.Password),
+            Role = request.Role
+        };
+
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        return new LoginResponse(GenerateToken(user), user.Role.ToString(), user.Name);
+    }
+
     public async Task<LoginResponse?> LoginAsync(LoginRequest request)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
         if (user is null) return null;
 
-        var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<object>();
+        var hasher = new PasswordHasher<object>();
         var result = hasher.VerifyHashedPassword(null!, user.PasswordHash, request.Password);
         if (result == Microsoft.AspNetCore.Identity.PasswordVerificationResult.Failed) return null;
 
