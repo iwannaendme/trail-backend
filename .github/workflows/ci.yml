@@ -21,10 +21,10 @@ jobs:
           dotnet-version: '10.x'
 
       - name: Restaurar dependências
-        run: dotnet restore
+        run: dotnet restore trail-backend.sln
 
       - name: Build
-        run: dotnet build --no-restore --configuration Release
+        run: dotnet build trail-backend.sln --no-restore --configuration Release
 
       - name: Testes
-        run: dotnet test --no-build --configuration Release --verbosity normal
+        run: dotnet test trail-backend.sln --no-build --configuration Release --verbosity normal
