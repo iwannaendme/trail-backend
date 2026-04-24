@@ -88,12 +88,22 @@ Spec OpenAPI: `https://localhost:7xxx/openapi/v1.json`
 
 ---
 
-## Endpoints do MVP
+## Endpoints
+
+### Implementados
 
 | Método | Rota | Role | Descrição |
 |--------|------|------|-----------|
-| `GET` | `/health` | Público | Health check da API |
-| `POST` | `/auth/login` | Público | Autenticação, retorna JWT |
+| `GET` | `/health` | Público | Liveness check da API |
+| `GET` | `/health/detailed` | Mentor / Manager | Readiness check (verifica conexão com o banco) |
+| `POST` | `/auth/register` | Público | Cria conta e retorna JWT |
+| `POST` | `/auth/login` | Público | Autentica e retorna JWT |
+| `GET` | `/auth/me` | Autenticado | Retorna os dados do usuário autenticado |
+
+### Planejados (MVP)
+
+| Método | Rota | Role | Descrição |
+|--------|------|------|-----------|
 | `GET` | `/trails` | Autenticado | Lista trilhas |
 | `GET` | `/trails/{id}/challenges` | Autenticado | Desafios de uma trilha |
 | `POST` | `/submissions` | Student | Submete uma entrega |
@@ -135,9 +145,12 @@ trail-backend/
 │
 ├── Trail.Api/                         # Projeto principal da API
 │   │
+│   ├── Configuration/                 # Classes de opções tipadas
+│   │   └── JwtOptions.cs              # Valida Jwt:Secret/Issuer/Audience no startup
+│   │
 │   ├── Controllers/                   # Endpoints HTTP (controllers finos, sem lógica)
-│   │   ├── AuthController.cs          # POST /auth/login
-│   │   └── HealthController.cs        # GET /health
+│   │   ├── AuthController.cs          # /auth/register, /auth/login, /auth/me
+│   │   └── HealthController.cs        # /health, /health/detailed
 │   │
 │   ├── Domain/                        # Núcleo do domínio (sem dependências externas)
 │   │   ├── Entities/                  # Entidades persistidas no banco
@@ -150,21 +163,27 @@ trail-backend/
 │   │       └── SubmissionStatus.cs    # Submitted | Reviewed
 │   │
 │   ├── Application/                   # Lógica de negócio e orquestração
-│   │   ├── Services/                  # Serviços de aplicação
-│   │   │   └── AuthService.cs         # Login + geração de JWT
-│   │   └── Interfaces/                # Contratos dos serviços (para injeção de dependência)
+│   │   └── Services/
+│   │       ├── AuthService.cs         # Fluxo de registro e login
+│   │       ├── ITokenService.cs       # Contrato para geração de JWT
+│   │       └── TokenService.cs        # Implementação — lê JwtOptions via IOptions<T>
+│   │
+│   ├── Extensions/                    # Extension methods para organizar o startup
+│   │   └── ServiceCollectionExtensions.cs  # AddDatabase, AddJwtAuthentication, AddApplicationServices
 │   │
 │   ├── Infrastructure/                # Detalhes de infraestrutura
-│   │   └── Data/                      # Persistência
-│   │       └── AppDbContext.cs        # DbContext com mapeamentos EF Core
+│   │   └── Data/
+│   │       ├── AppDbContext.cs        # DbContext com mapeamentos EF Core
+│   │       └── DbSeeder.cs            # Seed inicial de usuários (async, com logging)
 │   │
-│   ├── DTOs/                          # Objetos de transferência de dados (entrada/saída da API)
+│   ├── DTOs/                          # Objetos de transferência de dados
 │   │   └── Auth/
-│   │       ├── LoginRequest.cs        # { Email, Password }
+│   │       ├── LoginRequest.cs        # { Email*, Password* } — validação via DataAnnotations
+│   │       ├── RegisterRequest.cs     # { Name*, Email*, Password*, Role* }
 │   │       └── LoginResponse.cs       # { Token, Role, Name }
 │   │
 │   ├── Migrations/                    # Migrations geradas pelo EF Core
-│   ├── Program.cs                     # Configuração da aplicação (DI, middlewares, JWT)
+│   ├── Program.cs                     # Composição da aplicação (usa extension methods)
 │   ├── appsettings.json               # Configurações base (sem segredos)
 │   └── appsettings.Development.json   # Configurações locais (NÃO versionado)
 │
@@ -190,13 +209,39 @@ trail-backend/
 
 ---
 
+## Contrato de erros
+
+Todos os erros seguem **RFC 7807 (ProblemDetails)**:
+
+```json
+{
+  "type": "https://tools.ietf.org/html/rfc7807",
+  "title": "Conflict",
+  "status": 409,
+  "detail": "Email já cadastrado."
+}
+```
+
+| Status | Situação |
+|--------|----------|
+| `400` | Dados de entrada inválidos (validação automática via `[ApiController]`) |
+| `401` | Credenciais incorretas ou token ausente |
+| `403` | Token válido, mas role insuficiente |
+| `409` | Conflito de recurso (ex: email duplicado) |
+| `503` | Dependência indisponível (ex: banco fora do ar) |
+| `500` | Erro inesperado no servidor |
+
+---
+
 ## Regras de arquitetura
 
 - **Controllers** são finos — sem lógica de negócio
 - **Lógica de negócio** fica nos `Services` (Application layer)
+- **Geração de JWT** é responsabilidade de `ITokenService` / `TokenService`, não de `AuthService`
 - **KPIs** são sempre calculados dinamicamente, nunca persistidos no banco
 - **Autorização** por Role é feita no backend (`[Authorize(Roles = "Mentor")]`)
 - **Frontend** não implementa regras de negócio
+- **Configuração obrigatória** (`Jwt:Secret`, `Jwt:Issuer`, `Jwt:Audience`, `DefaultConnection`) é validada no startup — a aplicação não sobe com valores ausentes
 
 ---
 
