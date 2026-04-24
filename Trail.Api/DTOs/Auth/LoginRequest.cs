@@ -1,3 +1,8 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Trail.Api.DTOs.Auth;
 
-public record LoginRequest(string Email, string Password);
+public record LoginRequest(
+    [Required][EmailAddress] string Email,
+    [Required][MinLength(6)] string Password
+);
