@@ -1,36 +1,33 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using Trail.Api.Domain.Entities;
 using Trail.Api.DTOs.Auth;
 using Trail.Api.Infrastructure.Data;
 
 namespace Trail.Api.Application.Services;
 
-public class AuthService(AppDbContext db, IConfiguration config)
+public class AuthService(AppDbContext db, ITokenService tokenService)
 {
+    private readonly PasswordHasher<User> _hasher = new();
+
     public async Task<LoginResponse?> RegisterAsync(RegisterRequest request)
     {
         if (await db.Users.AnyAsync(u => u.Email == request.Email))
             return null;
 
-        var hasher = new PasswordHasher<object>();
         var user = new User
         {
             Id = Guid.NewGuid(),
             Name = request.Name,
             Email = request.Email,
-            PasswordHash = hasher.HashPassword(null!, request.Password),
             Role = request.Role
         };
+        user.PasswordHash = _hasher.HashPassword(user, request.Password);
 
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        return new LoginResponse(GenerateToken(user), user.Role.ToString(), user.Name);
+        return new LoginResponse(tokenService.GenerateToken(user), user.Role.ToString(), user.Name);
     }
 
     public async Task<LoginResponse?> LoginAsync(LoginRequest request)
@@ -38,35 +35,9 @@ public class AuthService(AppDbContext db, IConfiguration config)
         var user = await db.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
         if (user is null) return null;
 
-        var hasher = new PasswordHasher<object>();
-        var result = hasher.VerifyHashedPassword(null!, user.PasswordHash, request.Password);
-        if (result == Microsoft.AspNetCore.Identity.PasswordVerificationResult.Failed) return null;
+        var result = _hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password);
+        if (result == PasswordVerificationResult.Failed) return null;
 
-        var token = GenerateToken(user);
-        return new LoginResponse(token, user.Role.ToString(), user.Name);
-    }
-
-    private string GenerateToken(Domain.Entities.User user)
-    {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["Jwt:Secret"]!));
-        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-        var claims = new[]
-        {
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email),
-            new Claim(ClaimTypes.Role, user.Role.ToString()),
-            new Claim("name", user.Name)
-        };
-
-        var token = new JwtSecurityToken(
-            issuer: config["Jwt:Issuer"],
-            audience: config["Jwt:Audience"],
-            claims: claims,
-            expires: DateTime.UtcNow.AddHours(8),
-            signingCredentials: creds
-        );
-
-        return new JwtSecurityTokenHandler().WriteToken(token);
+        return new LoginResponse(tokenService.GenerateToken(user), user.Role.ToString(), user.Name);
     }
 }
