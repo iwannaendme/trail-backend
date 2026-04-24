@@ -1,3 +1,6 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Trail.Api.Application.Services;
 using Trail.Api.DTOs.Auth;
@@ -32,5 +35,17 @@ public class AuthController(AuthService authService) : ControllerBase
                 detail: "Email ou senha inválidos.");
 
         return Ok(result);
+    }
+
+    [HttpGet("me")]
+    [Authorize]
+    public IActionResult Me()
+    {
+        var id = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        var email = User.FindFirstValue(JwtRegisteredClaimNames.Email);
+        var name = User.FindFirstValue("name");
+        var role = User.FindFirstValue(ClaimTypes.Role);
+
+        return Ok(new { id, email, name, role });
     }
 }
