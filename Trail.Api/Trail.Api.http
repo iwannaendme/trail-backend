@@ -1,6 +1,70 @@
-@Trail.Api_HostAddress = http://localhost:5108
+@base = http://localhost:5108
 
-GET {{Trail.Api_HostAddress}}/weatherforecast/
+# Paste the token returned by /auth/login or /auth/register here
+@token = YOUR_JWT_TOKEN_HERE
+
+### Liveness
+GET {{base}}/health
 Accept: application/json
+
+###
+
+### Readiness (requer Mentor ou Manager)
+GET {{base}}/health/detailed
+Accept: application/json
+Authorization: Bearer {{token}}
+
+###
+
+### Registro
+POST {{base}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Test User",
+  "email": "test@trail.com",
+  "password": "Senha@123",
+  "role": 0
+}
+
+###
+
+### Login
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "student@trail.com",
+  "password": "Senha@123"
+}
+
+###
+
+### Login como Mentor
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "mentor@trail.com",
+  "password": "Senha@123"
+}
+
+###
+
+### Login como Manager
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "manager@trail.com",
+  "password": "Senha@123"
+}
+
+###
+
+### Meu perfil (requer token)
+GET {{base}}/auth/me
+Accept: application/json
+Authorization: Bearer {{token}}
 
 ###
