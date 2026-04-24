@@ -5,7 +5,7 @@ using Trail.Api.DTOs.Auth;
 namespace Trail.Api.Controllers;
 
 [ApiController]
-[Route("[controller]")]
+[Route("auth")]
 public class AuthController(AuthService authService) : ControllerBase
 {
     [HttpPost("register")]
@@ -13,9 +13,12 @@ public class AuthController(AuthService authService) : ControllerBase
     {
         var result = await authService.RegisterAsync(request);
         if (result is null)
-            return Conflict(new { message = "Email já cadastrado." });
+            return Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Conflict",
+                detail: "Email já cadastrado.");
 
-        return CreatedAtAction(nameof(Register), result);
+        return Ok(result);
     }
 
     [HttpPost("login")]
@@ -23,7 +26,10 @@ public class AuthController(AuthService authService) : ControllerBase
     {
         var result = await authService.LoginAsync(request);
         if (result is null)
-            return Unauthorized(new { message = "Email ou senha inválidos." });
+            return Problem(
+                statusCode: StatusCodes.Status401Unauthorized,
+                title: "Unauthorized",
+                detail: "Email ou senha inválidos.");
 
         return Ok(result);
     }
