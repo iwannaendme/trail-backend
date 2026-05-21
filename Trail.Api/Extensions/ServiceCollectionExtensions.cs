@@ -57,6 +57,7 @@ public static class ServiceCollectionExtensions
     {
         services.AddScoped<ITokenService, TokenService>();
         services.AddScoped<AuthService>();
+        services.AddScoped<TrailService>();
         return services;
     }
 }
