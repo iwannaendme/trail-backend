@@ -3,6 +3,9 @@
 # Paste the token returned by /auth/login or /auth/register here
 @token = YOUR_JWT_TOKEN_HERE
 
+# Paste a trail id returned by GET /trails here
+@trailId = YOUR_TRAIL_ID_HERE
+
 ### Liveness
 GET {{base}}/health
 Accept: application/json
@@ -64,6 +67,20 @@ Content-Type: application/json
 
 ### Meu perfil (requer token)
 GET {{base}}/auth/me
+Accept: application/json
+Authorization: Bearer {{token}}
+
+###
+
+### Listar trilhas (autenticado)
+GET {{base}}/trails
+Accept: application/json
+Authorization: Bearer {{token}}
+
+###
+
+### Listar desafios de uma trilha (autenticado)
+GET {{base}}/trails/{{trailId}}/challenges
 Accept: application/json
 Authorization: Bearer {{token}}
 
