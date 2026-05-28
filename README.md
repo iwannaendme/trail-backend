@@ -12,7 +12,7 @@ API REST do **Projeto Trail**, plataforma de gestão de trilhas de aprendizagem,
 | ORM | Entity Framework Core |
 | Banco | SQL Server |
 | Auth | JWT Bearer |
-| Docs | OpenAPI (nativo .NET 10) |
+| Docs | Swagger / OpenAPI (Swashbuckle) |
 | Cloud | Azure App Service + Azure SQL |
 
 ---
@@ -84,6 +84,7 @@ A API estará disponível em:
 - `https://localhost:7xxx` — HTTPS
 - `http://localhost:5xxx` — HTTP
 
+Swagger UI: `https://localhost:7xxx/swagger`  
 Spec OpenAPI: `https://localhost:7xxx/openapi/v1.json`
 
 ---

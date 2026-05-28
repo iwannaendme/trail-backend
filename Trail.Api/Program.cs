@@ -4,7 +4,11 @@ using Trail.Api.Infrastructure.Data;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
-builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new() { Title = "Trail API", Version = "v1" });
+});
 builder.Services.AddProblemDetails();
 
 builder.Services.AddDatabase(builder.Configuration);
@@ -14,8 +18,17 @@ builder.Services.AddApplicationServices();
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
-    app.MapOpenApi();
+app.UseSwagger(options =>
+{
+    options.RouteTemplate = "openapi/{documentName}.json";
+});
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("/openapi/v1.json", "Trail API v1");
+    options.RoutePrefix = "swagger";
+});
+app.MapGet("/", () => Results.Redirect("/swagger"))
+    .ExcludeFromDescription();
 
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
