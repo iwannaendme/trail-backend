@@ -16,6 +16,7 @@ secrets.json
 *.userosscache
 *.sln.docstates
 *.env
+*dotnet-tools.json
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
