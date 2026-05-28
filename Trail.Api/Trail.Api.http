@@ -79,6 +79,13 @@ Authorization: Bearer {{token}}
 
 ###
 
+### Listar trilhas com paginação e filtro (autenticado)
+GET {{base}}/trails?page=1&pageSize=20&search=backend
+Accept: application/json
+Authorization: Bearer {{token}}
+
+###
+
 ### Listar desafios de uma trilha (autenticado)
 GET {{base}}/trails/{{trailId}}/challenges
 Accept: application/json
