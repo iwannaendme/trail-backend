@@ -10,11 +10,8 @@ namespace Trail.Api.Application.Services;
 
 /// <summary>
 /// Drives the end-to-end AI trail generation pipeline:
-///   1. Persist or update the student's onboarding profile.
-///   2. Build a structured system prompt from the profile.
-///   3. Call Anthropic with strict tool-use to get a validated JSON trail.
-///   4. Persist the Trail + Challenges to the database.
-///   5. Auto-enroll the student so they can begin immediately.
+/// persist onboarding profile, build prompt, call Anthropic with
+/// structured output, persist trail and challenges, auto-enroll student.
 /// </summary>
 public class TrailGenerationService(
     AppDbContext db,
