@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Trail.Api.Domain.Entities;
+using Trail.Api.Domain.Enums;
 using Trail.Api.DTOs.Auth;
 using Trail.Api.DTOs.Common;
 using Trail.Api.Infrastructure.Data;
@@ -141,8 +142,15 @@ public class AuthService(AppDbContext db, ITokenService tokenService, IOptions<R
         var u = await db.Users.FirstOrDefaultAsync(x => x.Id == userId);
         if (u is null) return null;
 
+        // Build two-letter initials: first letter of first name + first letter of last name.
+        // "Ana Souza" → "AS", "Matheus" → "M", "" → "?"
+        var parts = u.Name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var initials = parts.Length >= 2
+            ? $"{parts[0][0]}{parts[^1][0]}".ToUpper()
+            : (parts.Length == 1 ? parts[0][..1].ToUpper() : "?");
+
         return new UserSummaryResponse(u.Id, u.Name, u.Email, u.Role.ToString(),
-            (u.Name.Length > 0 ? u.Name[..1].ToUpper() : ""), 1, u.CreatedAt);
+            initials, 1, u.CreatedAt);
     }
 
     public async Task<UserSettingsResponse?> GetSettingsAsync(Guid userId)
@@ -216,5 +224,19 @@ public class AuthService(AppDbContext db, ITokenService tokenService, IOptions<R
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Returns review activity stats for a mentor or manager.
+    /// Counts are scoped to reviews performed by this user (ReviewerId),
+    /// plus the current global pending queue length.
+    /// </summary>
+    public async Task<MentorStatsResponse> GetMentorStatsAsync(Guid mentorId)
+    {
+        var reviewsDone = await db.Submissions.CountAsync(s => s.ReviewerId == mentorId);
+        var approved = await db.Submissions.CountAsync(s => s.ReviewerId == mentorId && s.Status == SubmissionStatus.Approved);
+        var needsRev = await db.Submissions.CountAsync(s => s.ReviewerId == mentorId && s.Status == SubmissionStatus.NeedsRevision);
+        var pending = await db.Submissions.CountAsync(s => s.Status == SubmissionStatus.Submitted);
+        return new MentorStatsResponse(reviewsDone, approved, needsRev, pending);
     }
 }

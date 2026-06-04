@@ -14,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
     public DbSet<UserActivity> UserActivities => Set<UserActivity>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<StudentOnboardingProfile> OnboardingProfiles => Set<StudentOnboardingProfile>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -48,16 +49,31 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.HasKey(c => c.Id);
             e.Property(c => c.Title).IsRequired().HasMaxLength(256);
+            e.Property(c => c.YouTubeUrl).HasMaxLength(2048);
+            e.Property(c => c.AiSearchTerms).HasColumnType("nvarchar(max)");
             e.HasOne(c => c.Trail)
              .WithMany(t => t.Challenges)
              .HasForeignKey(c => c.TrailId);
         });
 
+        modelBuilder.Entity<StudentOnboardingProfile>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.UserId).IsUnique();
+            e.Property(x => x.TargetRole).IsRequired().HasMaxLength(256);
+            e.Property(x => x.TechnicalDepth).IsRequired().HasMaxLength(32);
+            e.Property(x => x.WeeklyHours).IsRequired().HasMaxLength(16);
+            e.Property(x => x.LearningStyle).IsRequired().HasMaxLength(32);
+            e.Property(x => x.ProjectGoal).IsRequired().HasMaxLength(1000);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<Submission>(e =>
         {
             e.HasKey(s => s.Id);
-            e.Property(s => s.DeliveryUrl).IsRequired().HasMaxLength(2048);
-            e.Property(s => s.Feedback).HasMaxLength(4000);
+            e.Property(s => s.GitHubUrl).IsRequired().HasMaxLength(2048);
+            e.Property(s => s.MentorComment).HasMaxLength(500);
             e.Property(s => s.Status).HasConversion<string>();
 
             e.HasOne(s => s.Student)
