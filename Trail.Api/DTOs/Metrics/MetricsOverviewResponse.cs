@@ -5,10 +5,10 @@ public record MetricsOverviewResponse(
     int TotalTrails,
     int TotalChallenges,
     int TotalSubmissions,
-    int ReviewedSubmissions,
     int PendingSubmissions,
+    int ApprovedSubmissions,
+    int NeedsRevisionSubmissions,
     decimal CompletionRate,
-    decimal CoverageRate,
-    decimal? AverageScore,
-    decimal? AverageLeadTimeHours
+    decimal? ApprovalRate,          // Approved / (Approved + NeedsRevision) * 100. Null when no reviews exist.
+    decimal? AverageLeadTimeHours   // Average hours from SubmittedAt to ReviewedAt.
 );

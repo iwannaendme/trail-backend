@@ -66,4 +66,29 @@ public static class ServiceCollectionExtensions
         services.AddScoped<SubmissionService>();
         return services;
     }
+
+    public static IServiceCollection AddAiServices(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services.AddOptions<Trail.Api.Configuration.AnthropicOptions>()
+            .BindConfiguration(Trail.Api.Configuration.AnthropicOptions.SectionName);
+
+        // Dedicated Anthropic HTTP client — 120 s timeout covers LLM latency
+        services.AddHttpClient("anthropic", client =>
+        {
+            client.BaseAddress = new Uri("https://api.anthropic.com/v1/");
+            var key = configuration["Anthropic:ApiKey"] ?? "";
+            if (!string.IsNullOrWhiteSpace(key))
+                client.DefaultRequestHeaders.Add("x-api-key", key);
+            client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+            client.Timeout = TimeSpan.FromSeconds(120);
+        });
+
+        services.AddScoped<IAnthropicService, AnthropicService>();
+        services.AddScoped<TrailGenerationService>();
+        services.AddScoped<SocraticAssistantService>();
+        services.AddScoped<GitHubReviewService>();
+        return services;
+    }
 }
