@@ -6,12 +6,12 @@ public record SubmissionResponse(
     string StudentName,
     Guid ChallengeId,
     string ChallengeTitle,
-    string DeliveryUrl,
+    string? TrailName,
+    string GitHubUrl,
     DateTime SubmittedAt,
-    string Status,
+    string Status,          // "Submitted" | "Approved" | "NeedsRevision"
     Guid? ReviewerId,
     string? ReviewerName,
-    int? Score,
-    string? Feedback,
+    string? MentorComment,
     DateTime? ReviewedAt
 );

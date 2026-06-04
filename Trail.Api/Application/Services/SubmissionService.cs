@@ -10,27 +10,29 @@ namespace Trail.Api.Application.Services;
 
 public class SubmissionService(AppDbContext db)
 {
-    public async Task<SubmissionResponse?> CreateAsync(Guid studentId, CreateSubmissionRequest request, CancellationToken ct = default)
+    // ── Student actions ───────────────────────────────────────────────────────
+
+    public async Task<SubmissionResponse?> CreateAsync(
+        Guid studentId, CreateSubmissionRequest request, CancellationToken ct = default)
     {
-        var studentExists = await db.Users.AnyAsync(u => u.Id == studentId && u.Role == UserRole.Student, ct);
-        if (!studentExists)
-            return null;
+        var studentExists = await db.Users
+            .AnyAsync(u => u.Id == studentId && u.Role == UserRole.Student, ct);
+        if (!studentExists) return null;
 
         var challenge = await db.Challenges
+            .Include(c => c.Trail)
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == request.ChallengeId, ct);
-
-        if (challenge is null)
-            return null;
+        if (challenge is null) return null;
 
         var submission = new Submission
         {
             Id = Guid.NewGuid(),
             StudentId = studentId,
             ChallengeId = request.ChallengeId,
-            DeliveryUrl = request.DeliveryUrl,
+            GitHubUrl = request.GitHubUrl,
             SubmittedAt = DateTime.UtcNow,
-            Status = SubmissionStatus.Submitted
+            Status = SubmissionStatus.Submitted,
         };
 
         db.Submissions.Add(submission);
@@ -39,164 +41,165 @@ public class SubmissionService(AppDbContext db)
         return await GetByIdAsync(submission.Id, ct);
     }
 
+    // ── Mentor actions ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns all pending submissions (oldest first — fair queue semantics).
+    /// Includes trail name so the mentor can contextualise without opening the link.
+    /// </summary>
     public async Task<IReadOnlyList<SubmissionResponse>> ListPendingAsync(CancellationToken ct = default)
         => await db.Submissions
             .AsNoTracking()
             .Where(s => s.Status == SubmissionStatus.Submitted)
-            .OrderByDescending(s => s.SubmittedAt)
+            .OrderBy(s => s.SubmittedAt)   // oldest first — respect queue order
             .Select(s => new SubmissionResponse(
                 s.Id,
                 s.StudentId,
                 s.Student.Name,
                 s.ChallengeId,
                 s.Challenge.Title,
-                s.DeliveryUrl,
+                s.Challenge.Trail.Name,
+                s.GitHubUrl,
                 s.SubmittedAt,
                 s.Status.ToString(),
                 s.ReviewerId,
                 s.Reviewer != null ? s.Reviewer.Name : null,
-                s.Score,
-                s.Feedback,
+                s.MentorComment,
                 s.ReviewedAt))
             .ToListAsync(ct);
 
-    public async Task<SubmissionResponse?> ReviewAsync(Guid submissionId, Guid reviewerId, ReviewSubmissionRequest request, CancellationToken ct = default)
+    /// <summary>
+    /// Records a binary review decision. Replaces the 0–100 score system —
+    /// a decision is either Approved or NeedsRevision, plus an optional note.
+    /// </summary>
+    public async Task<SubmissionResponse?> ReviewAsync(
+        Guid submissionId, Guid reviewerId, ReviewSubmissionRequest request, CancellationToken ct = default)
     {
-        var submission = await db.Submissions.FirstOrDefaultAsync(s => s.Id == submissionId, ct);
-        if (submission is null)
-            return null;
+        var submission = await db.Submissions
+            .FirstOrDefaultAsync(s => s.Id == submissionId, ct);
+        if (submission is null) return null;
 
-        var reviewerExists = await db.Users.AnyAsync(u => u.Id == reviewerId && u.Role == UserRole.Mentor, ct);
-        if (!reviewerExists)
-            return null;
+        submission.Status = request.Decision == ReviewDecision.Approved
+            ? SubmissionStatus.Approved
+            : SubmissionStatus.NeedsRevision;
 
         submission.ReviewerId = reviewerId;
-        submission.Score = request.Score;
-        submission.Feedback = request.Feedback;
+        submission.MentorComment = request.Comment?.Trim();
         submission.ReviewedAt = DateTime.UtcNow;
-        submission.Status = SubmissionStatus.Reviewed;
 
         await db.SaveChangesAsync(ct);
         return await GetByIdAsync(submissionId, ct);
     }
 
-    public async Task<StudentProgressResponse?> GetStudentProgressAsync(Guid studentId, CancellationToken ct = default)
+    /// <summary>Count of submissions awaiting review — used for the sidebar badge.</summary>
+    public async Task<int> CountPendingAsync(CancellationToken ct = default)
+        => await db.Submissions.CountAsync(s => s.Status == SubmissionStatus.Submitted, ct);
+
+    // ── Progress & metrics ────────────────────────────────────────────────────
+
+    public async Task<StudentProgressResponse?> GetStudentProgressAsync(
+        Guid studentId, CancellationToken ct = default)
     {
-        var student = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == studentId && u.Role == UserRole.Student, ct);
-        if (student is null)
-            return null;
+        var student = await db.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == studentId && u.Role == UserRole.Student, ct);
+        if (student is null) return null;
 
         var trails = await db.Trails
             .AsNoTracking()
-            .Where(t => t.Enrollments.Any(e => e.UserId == studentId) || t.Challenges.Any(c => c.Submissions.Any(s => s.StudentId == studentId)))
+            .Where(t =>
+                t.Enrollments.Any(e => e.UserId == studentId) ||
+                t.Challenges.Any(c => c.Submissions.Any(s => s.StudentId == studentId)))
             .Select(t => new
             {
                 t.Id,
                 t.Name,
                 TotalChallenges = t.Challenges.Count,
-                CompletedChallenges = t.Challenges.Count(c => c.Submissions.Any(s => s.StudentId == studentId && s.Status == SubmissionStatus.Reviewed)),
-                PendingChallenges = t.Challenges.Count(c => c.Submissions.Any(s => s.StudentId == studentId && s.Status == SubmissionStatus.Submitted) && !c.Submissions.Any(s => s.StudentId == studentId && s.Status == SubmissionStatus.Reviewed)),
+                // Approved = fully done
+                CompletedChallenges = t.Challenges.Count(c =>
+                    c.Submissions.Any(s => s.StudentId == studentId && s.Status == SubmissionStatus.Approved)),
+                // Submitted but not yet Approved (includes NeedsRevision)
+                PendingChallenges = t.Challenges.Count(c =>
+                    c.Submissions.Any(s => s.StudentId == studentId && s.Status == SubmissionStatus.Submitted) &&
+                    !c.Submissions.Any(s => s.StudentId == studentId && s.Status == SubmissionStatus.Approved)),
                 LastSubmissionAt = t.Challenges
                     .SelectMany(c => c.Submissions)
                     .Where(s => s.StudentId == studentId)
                     .Select(s => (DateTime?)s.SubmittedAt)
                     .OrderByDescending(s => s)
-                    .FirstOrDefault()
+                    .FirstOrDefault(),
             })
             .OrderBy(t => t.Name)
             .ToListAsync(ct);
 
-        var totalChallenges = trails.Sum(t => t.TotalChallenges);
-        var completedChallenges = trails.Sum(t => t.CompletedChallenges);
-        var pendingChallenges = trails.Sum(t => t.PendingChallenges);
+        var total = trails.Sum(t => t.TotalChallenges);
+        var completed = trails.Sum(t => t.CompletedChallenges);
+        var pending = trails.Sum(t => t.PendingChallenges);
 
-        var completionRate = totalChallenges == 0
-            ? 0m
-            : Math.Round((decimal)completedChallenges / totalChallenges * 100m, 2);
+        var rate = total == 0 ? 0m : Math.Round((decimal)completed / total * 100m, 2);
 
         return new StudentProgressResponse(
-            student.Id,
-            student.Name,
-            totalChallenges,
-            completedChallenges,
-            pendingChallenges,
-            completionRate,
+            student.Id, student.Name, total, completed, pending, rate,
             trails.Select(t => new TrailProgressItem(
-                    t.Id,
-                    t.Name,
-                    t.TotalChallenges,
-                    t.CompletedChallenges,
-                    t.PendingChallenges,
-                    t.TotalChallenges == 0 ? 0m : Math.Round((decimal)t.CompletedChallenges / t.TotalChallenges * 100m, 2),
-                    t.LastSubmissionAt))
-                .ToList());
+                t.Id, t.Name, t.TotalChallenges, t.CompletedChallenges, t.PendingChallenges,
+                t.TotalChallenges == 0 ? 0m : Math.Round((decimal)t.CompletedChallenges / t.TotalChallenges * 100m, 2),
+                t.LastSubmissionAt)).ToList());
     }
 
     public async Task<MetricsOverviewResponse> GetMetricsOverviewAsync(CancellationToken ct = default)
     {
-        var totalStudents = await db.Users.AsNoTracking().CountAsync(u => u.Role == UserRole.Student, ct);
-        var totalTrails = await db.Trails.AsNoTracking().CountAsync(ct);
-        var totalChallenges = await db.Challenges.AsNoTracking().CountAsync(ct);
-        var totalSubmissions = await db.Submissions.AsNoTracking().CountAsync(ct);
-        var reviewedSubmissions = await db.Submissions.AsNoTracking().CountAsync(s => s.Status == SubmissionStatus.Reviewed, ct);
+        var totalStudents = await db.Users.CountAsync(u => u.Role == UserRole.Student, ct);
+        var totalTrails = await db.Trails.CountAsync(ct);
+        var totalChallenges = await db.Challenges.CountAsync(ct);
+        var totalSubmissions = await db.Submissions.CountAsync(ct);
+        var pending = await db.Submissions.CountAsync(s => s.Status == SubmissionStatus.Submitted, ct);
+        var approved = await db.Submissions.CountAsync(s => s.Status == SubmissionStatus.Approved, ct);
+        var needsRevision = await db.Submissions.CountAsync(s => s.Status == SubmissionStatus.NeedsRevision, ct);
 
-        var reviewedChallenges = await db.Submissions
-            .AsNoTracking()
-            .Where(s => s.Status == SubmissionStatus.Reviewed)
+        var reviewed = approved + needsRevision;
+        decimal? approvalRate = reviewed == 0
+            ? null
+            : Math.Round((decimal)approved / reviewed * 100m, 2);
+
+        var approvedChallenges = await db.Submissions
+            .Where(s => s.Status == SubmissionStatus.Approved)
             .Select(s => s.ChallengeId)
             .Distinct()
             .CountAsync(ct);
 
-        var averageScore = await db.Submissions
-            .AsNoTracking()
-            .Where(s => s.Score.HasValue)
-            .Select(s => (decimal?)s.Score)
-            .AverageAsync(ct);
+        var completionRate = totalChallenges == 0
+            ? 0m
+            : Math.Round((decimal)approvedChallenges / totalChallenges * 100m, 2);
 
         var leadTimeHours = await db.Submissions
-            .AsNoTracking()
             .Where(s => s.ReviewedAt.HasValue)
             .Select(s => (decimal?)EF.Functions.DateDiffMinute(s.SubmittedAt, s.ReviewedAt!.Value) / 60m)
             .AverageAsync(ct);
 
-        var completionRate = totalChallenges == 0
-            ? 0m
-            : Math.Round((decimal)reviewedChallenges / totalChallenges * 100m, 2);
-
-        var coverageRate = totalSubmissions == 0
-            ? 0m
-            : Math.Round((decimal)reviewedSubmissions / totalSubmissions * 100m, 2);
-
         return new MetricsOverviewResponse(
-            totalStudents,
-            totalTrails,
-            totalChallenges,
-            totalSubmissions,
-            reviewedSubmissions,
-            totalSubmissions - reviewedSubmissions,
-            completionRate,
-            coverageRate,
-            averageScore is null ? null : Math.Round(averageScore.Value, 2),
+            totalStudents, totalTrails, totalChallenges, totalSubmissions,
+            pending, approved, needsRevision, completionRate, approvalRate,
             leadTimeHours is null ? null : Math.Round(leadTimeHours.Value, 2));
     }
 
-    private async Task<SubmissionResponse?> GetByIdAsync(Guid submissionId, CancellationToken ct = default)
+    // ── Internal ──────────────────────────────────────────────────────────────
+
+    private async Task<SubmissionResponse?> GetByIdAsync(Guid id, CancellationToken ct)
         => await db.Submissions
             .AsNoTracking()
-            .Where(s => s.Id == submissionId)
+            .Where(s => s.Id == id)
             .Select(s => new SubmissionResponse(
                 s.Id,
                 s.StudentId,
                 s.Student.Name,
                 s.ChallengeId,
                 s.Challenge.Title,
-                s.DeliveryUrl,
+                s.Challenge.Trail.Name,
+                s.GitHubUrl,
                 s.SubmittedAt,
                 s.Status.ToString(),
                 s.ReviewerId,
                 s.Reviewer != null ? s.Reviewer.Name : null,
-                s.Score,
-                s.Feedback,
+                s.MentorComment,
                 s.ReviewedAt))
             .FirstOrDefaultAsync(ct);
 }
