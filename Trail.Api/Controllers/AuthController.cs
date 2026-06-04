@@ -179,18 +179,6 @@ public class AuthController(AuthService authService) : ControllerBase
         return Ok(items);
     }
 
-    /// <summary>
-    /// Returns review activity stats for the authenticated mentor or manager.
-    /// </summary>
-    [HttpGet("mentor-stats")]
-    [Authorize(Roles = "Mentor,Manager")]
-    public async Task<ActionResult<MentorStatsResponse>> MentorStats()
-    {
-        var idClaim = GetClaimValue(JwtRegisteredClaimNames.Sub, ClaimTypes.NameIdentifier);
-        if (!Guid.TryParse(idClaim, out var id)) return Unauthorized();
-        return Ok(await authService.GetMentorStatsAsync(id));
-    }
-
     private string? GetClaimValue(params string[] claimTypes)
         => claimTypes.Select(User.FindFirstValue).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 }
